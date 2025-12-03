@@ -73,9 +73,7 @@ impl UdpAddr {
             ));
         }
 
-        let host = url
-            .host_str()
-            .ok_or(anyhow!("Missing host in URL"))?;
+        let host = url.host_str().ok_or(anyhow!("Missing host in URL"))?;
 
         let port = url.port().ok_or(anyhow!("Missing port in URL"))?;
 
@@ -126,10 +124,7 @@ impl From<SocketAddr> for UdpAddr {
 
 #[derive(Debug, Clone)]
 pub enum Command {
-    Stream {
-        udp_addr: UdpAddr,
-        tickers: Tickers,
-    },
+    Stream { udp_addr: UdpAddr, tickers: Tickers },
     Ping,
 }
 
@@ -218,8 +213,8 @@ mod tests {
     use super::*;
 
     mod udp_addr {
-        use rstest::rstest;
         use super::*;
+        use rstest::rstest;
 
         #[rstest]
         fn parse_with_scheme(#[case] addr: &str) {
