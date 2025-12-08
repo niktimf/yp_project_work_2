@@ -15,11 +15,8 @@ pub struct StockQuote {
 
 impl StockQuote {
     const FIELD_SEPARATOR: char = '|';
-    pub fn new(
-        ticker: impl Into<String>,
-        price: Decimal,
-        volume: u32,
-    ) -> Result<Self> {
+
+    pub fn new(ticker: impl Into<String>, price: Decimal, volume: u32) -> Result<Self> {
         let ticker = ticker.into();
 
         if ticker.is_empty() {
@@ -106,13 +103,16 @@ impl FromStr for StockQuote {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::{any, prop};
+    use proptest::strategy::Strategy;
+    use proptest::{prop_assert, prop_assert_eq, proptest};
     use rstest::rstest;
 
     #[test]
     fn roundtrip_serialization() {
         let quote = StockQuote {
             ticker: "AAPL".to_string(),
-            price: Decimal::new(15050, 2), // 150.50
+            price: Decimal::ONE_HUNDRED,
             volume: 1000,
             timestamp: 1234567890,
         };
@@ -123,47 +123,22 @@ mod tests {
         assert_eq!(quote, parsed);
     }
 
-    #[test]
-    fn rejects_empty_ticker() {
-        let result = StockQuote::new("", Decimal::ONE, 100);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn rejects_ticker_with_separator() {
-        let result = StockQuote::new("AA|PL", Decimal::ONE, 100);
-        assert!(result.is_err());
-    }
-
     #[rstest]
     #[case("AAPL|150")]
     #[case("AAPL|100|50|123|extra")]
     fn rejects_malformed_input(#[case] input: &str) {
         assert!(input.parse::<StockQuote>().is_err());
     }
-}
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use proptest::prelude::*;
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Strategies
-    // ─────────────────────────────────────────────────────────────────────────
-
-    /// Генерирует валидный тикер: 1-10 символов A-Z, без разделителя.
     fn valid_ticker() -> impl Strategy<Value = String> {
         "[A-Z]{1,10}"
     }
 
-    /// Генерирует валидную цену: положительный Decimal.
     fn valid_price() -> impl Strategy<Value = Decimal> {
-        (1i64..1_000_000i64, 0u32..4u32).prop_map(|(mantissa, scale)| {
-            Decimal::new(mantissa, scale)
-        })
+        (1i64..1_000_000i64, 0u32..4u32)
+            .prop_map(|(mantissa, scale)| Decimal::new(mantissa, scale))
     }
 
-    /// Генерирует валидную котировку.
     fn valid_quote() -> impl Strategy<Value = StockQuote> {
         (valid_ticker(), valid_price(), any::<u32>(), any::<u64>()).prop_map(
             |(ticker, price, volume, timestamp)| StockQuote {
@@ -175,12 +150,7 @@ mod tests {
         )
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Property tests
-    // ─────────────────────────────────────────────────────────────────────────
-
     proptest! {
-        /// Сериализация и парсинг — обратимые операции.
         #[test]
         fn roundtrip(quote in valid_quote()) {
             let serialized = quote.to_string();
@@ -188,30 +158,26 @@ mod tests {
             prop_assert_eq!(quote, parsed);
         }
 
-        /// Display всегда даёт ровно 4 поля.
         #[test]
         fn display_has_four_fields(quote in valid_quote()) {
             let serialized = quote.to_string();
-            let parts: Vec<_> = serialized.split(FIELD_SEPARATOR).collect();
+            let parts: Vec<_> = serialized.split(StockQuote::FIELD_SEPARATOR).collect();
             prop_assert_eq!(parts.len(), 4);
         }
 
-        /// to_bytes() == to_string().into_bytes()
         #[test]
         fn to_bytes_matches_display(quote in valid_quote()) {
             prop_assert_eq!(quote.to_bytes(), quote.to_string().into_bytes());
         }
 
-        /// Пустой тикер всегда отклоняется.
         #[test]
         fn rejects_empty_ticker(
             price in valid_price(),
-            volume in any::<u32>()
+            volume in any::<u32>(),
         ) {
             prop_assert!(StockQuote::new("", price, volume).is_err());
         }
 
-        /// Тикер с разделителем всегда отклоняется.
         #[test]
         fn rejects_ticker_with_separator(
             before in "[A-Z]{0,5}",
@@ -219,25 +185,21 @@ mod tests {
             price in valid_price(),
             volume in any::<u32>()
         ) {
-            let bad_ticker = format!("{before}{FIELD_SEPARATOR}{after}");
+            let separator = StockQuote::FIELD_SEPARATOR;
+            let bad_ticker = format!("{before}{separator}{after}");
             prop_assert!(StockQuote::new(bad_ticker, price, volume).is_err());
         }
 
-        /// Строка с неправильным числом полей не парсится.
         #[test]
         fn rejects_wrong_field_count(
-            parts in prop::collection::vec("[^|]+", 1..10usize)
+            parts in prop::collection::vec("[^|]+", 1..10_usize)
         ) {
-            let input = parts.join(&FIELD_SEPARATOR.to_string());
+            let input = parts.join(&StockQuote::FIELD_SEPARATOR.to_string());
             if parts.len() != 4 {
                 prop_assert!(input.parse::<StockQuote>().is_err());
             }
         }
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Edge cases (explicit)
-    // ─────────────────────────────────────────────────────────────────────────
 
     #[test]
     fn parses_extreme_values() {
