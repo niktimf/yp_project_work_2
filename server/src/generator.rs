@@ -200,7 +200,10 @@ mod tests {
     #[case("AAPL", true)]
     #[case("TSLA", true)]
     #[case("UNKNOWN", false)]
-    fn default_has_standard_tickers(#[case] ticker: &str, #[case] exists: bool) {
+    fn default_has_standard_tickers(
+        #[case] ticker: &str,
+        #[case] exists: bool,
+    ) {
         let gen = QuoteGenerator::default();
         assert_eq!(gen.current_price(ticker).is_some(), exists);
     }

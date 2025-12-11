@@ -9,7 +9,6 @@ use std::time::{Duration, Instant};
 
 use common::{StockQuote, Tickers, UdpAddr};
 
-
 #[derive(Debug, Clone)]
 pub struct ClientInfo {
     pub target: UdpAddr,
@@ -26,31 +25,21 @@ impl ClientInfo {
         }
     }
 
-    /// Обновляет время последнего ping.
     pub fn touch(&mut self) {
         self.last_ping = Instant::now();
     }
 
-    /// Проверяет, истёк ли таймаут.
     #[must_use]
     pub fn is_expired(&self, timeout: Duration) -> bool {
         self.last_ping.elapsed() > timeout
     }
 
-    /// Проверяет, подписан ли клиент на тикер.
     #[must_use]
     pub fn is_subscribed(&self, ticker: &str) -> bool {
         self.tickers.contains(ticker)
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ClientManager
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Менеджер подключённых клиентов.
-///
-/// Потокобезопасный — можно клонировать и использовать из разных потоков.
 #[derive(Clone)]
 pub struct ClientManager {
     clients: Arc<Mutex<HashMap<UdpAddr, ClientInfo>>>,
@@ -69,10 +58,7 @@ impl ClientManager {
     pub fn register(&self, target: UdpAddr, tickers: Tickers) {
         let client = ClientInfo::new(target, tickers.clone());
 
-        info!(
-            "Registering client {} for tickers: {}",
-            target, tickers
-        );
+        info!("Registering client {} for tickers: {}", target, tickers);
 
         self.clients.lock().insert(target, client);
     }
@@ -161,10 +147,7 @@ impl ClientStreamer {
     }
 
     pub fn run(self) {
-        info!(
-            "Starting stream to {} for tickers: {}",
-            self.addr, self.tickers
-        );
+        info!("Starting stream to {} for tickers: {}", self.addr, self.tickers);
 
         if let Err(e) = self.stream_loop() {
             warn!("Streamer for {} stopped: {}", self.addr, e);
@@ -264,7 +247,11 @@ mod tests {
         use super::*;
 
         #[rstest]
-        fn register_and_contains(manager: ClientManager, target: UdpAddr, tickers: Tickers) {
+        fn register_and_contains(
+            manager: ClientManager,
+            target: UdpAddr,
+            tickers: Tickers,
+        ) {
             assert!(!manager.contains(&target));
             manager.register(target, tickers);
             assert!(manager.contains(&target));
@@ -272,7 +259,11 @@ mod tests {
         }
 
         #[rstest]
-        fn remove_client(manager: ClientManager, target: UdpAddr, tickers: Tickers) {
+        fn remove_client(
+            manager: ClientManager,
+            target: UdpAddr,
+            tickers: Tickers,
+        ) {
             manager.register(target, tickers);
             manager.remove(&target);
             assert!(!manager.contains(&target));
@@ -285,13 +276,20 @@ mod tests {
         }
 
         #[rstest]
-        fn update_ping_returns_true_for_known(manager: ClientManager, target: UdpAddr, tickers: Tickers) {
+        fn update_ping_returns_true_for_known(
+            manager: ClientManager,
+            target: UdpAddr,
+            tickers: Tickers,
+        ) {
             manager.register(target, tickers);
             assert!(manager.update_ping(&target));
         }
 
         #[rstest]
-        fn remove_expired_cleans_old_clients(target: UdpAddr, tickers: Tickers) {
+        fn remove_expired_cleans_old_clients(
+            target: UdpAddr,
+            tickers: Tickers,
+        ) {
             let manager = ClientManager::new(Duration::from_millis(10));
             manager.register(target, tickers);
             thread::sleep(Duration::from_millis(50));
@@ -304,7 +302,10 @@ mod tests {
         }
 
         #[rstest]
-        fn remove_expired_keeps_active_clients(target: UdpAddr, tickers: Tickers) {
+        fn remove_expired_keeps_active_clients(
+            target: UdpAddr,
+            tickers: Tickers,
+        ) {
             let manager = ClientManager::new(Duration::from_secs(10));
             manager.register(target, tickers);
 
@@ -317,9 +318,16 @@ mod tests {
         #[rstest]
         #[case(8080, 8081)]
         #[case(9000, 9001)]
-        fn snapshot_returns_copy(manager: ClientManager, tickers: Tickers, #[case] port1: u16, #[case] port2: u16) {
-            let target1: UdpAddr = format!("127.0.0.1:{port1}").parse().unwrap();
-            let target2: UdpAddr = format!("127.0.0.1:{port2}").parse().unwrap();
+        fn snapshot_returns_copy(
+            manager: ClientManager,
+            tickers: Tickers,
+            #[case] port1: u16,
+            #[case] port2: u16,
+        ) {
+            let target1: UdpAddr =
+                format!("127.0.0.1:{port1}").parse().unwrap();
+            let target2: UdpAddr =
+                format!("127.0.0.1:{port2}").parse().unwrap();
             manager.register(target1, tickers.clone());
             manager.register(target2, tickers);
 

@@ -29,7 +29,8 @@ impl Client {
         tcp_stream.set_read_timeout(Some(Duration::from_secs(5)))?;
 
         info!("Setting up UDP socket on port {}", self.config.udp_port);
-        let udp_socket = Arc::new(UdpSocket::bind(self.config.udp_bind_addr())?);
+        let udp_socket =
+            Arc::new(UdpSocket::bind(self.config.udp_bind_addr())?);
         udp_socket.set_read_timeout(Some(Duration::from_millis(500)))?;
 
         self.send_stream_command(&mut tcp_stream)?;
@@ -37,8 +38,12 @@ impl Client {
         let ping_handle = self.spawn_ping_thread(udp_socket.clone());
         let recv_handle = self.spawn_receive_thread(udp_socket);
 
-        ping_handle.join().map_err(|_| anyhow!("Ping thread panicked"))?;
-        recv_handle.join().map_err(|_| anyhow!("Receive thread panicked"))?;
+        ping_handle
+            .join()
+            .map_err(|_| anyhow!("Ping thread panicked"))?;
+        recv_handle
+            .join()
+            .map_err(|_| anyhow!("Receive thread panicked"))?;
 
         info!("Client shutdown complete");
         Ok(())
@@ -56,7 +61,12 @@ impl Client {
     fn send_stream_command(&self, tcp_stream: &mut TcpStream) -> Result<()> {
         let tickers_str = self.config.tickers.to_string();
         let udp_addr = self.config.udp_bind_addr();
-        let command = format!("STREAM udp://{}:{} {}\n", udp_addr.ip(), udp_addr.port(), tickers_str);
+        let command = format!(
+            "STREAM udp://{}:{} {}\n",
+            udp_addr.ip(),
+            udp_addr.port(),
+            tickers_str
+        );
 
         info!("Sending command: {}", command.trim());
         tcp_stream.write_all(command.as_bytes())?;
@@ -102,7 +112,10 @@ impl Client {
         debug!("Ping thread stopped");
     }
 
-    fn spawn_receive_thread(&self, udp_socket: Arc<UdpSocket>) -> JoinHandle<()> {
+    fn spawn_receive_thread(
+        &self,
+        udp_socket: Arc<UdpSocket>,
+    ) -> JoinHandle<()> {
         let running = self.running.clone();
 
         thread::spawn(move || {
@@ -111,7 +124,7 @@ impl Client {
     }
 
     fn receive_loop(socket: Arc<UdpSocket>, running: Arc<AtomicBool>) {
-        let mut buf = [0u8; 4096];
+        let mut buf = [0_u8; 4096];
 
         while running.load(Ordering::SeqCst) {
             match socket.recv_from(&mut buf) {
@@ -119,7 +132,9 @@ impl Client {
                     let data = String::from_utf8_lossy(&buf[..len]);
                     Self::handle_received_data(&data);
                 }
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => continue,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    continue
+                }
                 Err(e) if e.kind() == std::io::ErrorKind::TimedOut => continue,
                 Err(e) => {
                     if running.load(Ordering::SeqCst) {

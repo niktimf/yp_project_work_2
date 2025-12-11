@@ -16,7 +16,11 @@ pub struct StockQuote {
 impl StockQuote {
     const FIELD_SEPARATOR: char = '|';
 
-    pub fn new(ticker: impl Into<String>, price: Decimal, volume: u32) -> Result<Self> {
+    pub fn new(
+        ticker: impl Into<String>,
+        price: Decimal,
+        volume: u32,
+    ) -> Result<Self> {
         let ticker = ticker.into();
 
         if ticker.is_empty() {

@@ -80,7 +80,8 @@ impl Server {
     ) -> Result<()> {
         let mut generator = QuoteGenerator::new();
         const ALL_TICKERS: [&str; 10] = [
-            "AAPL", "GOOGL", "TSLA", "MSFT", "AMZN", "NVDA", "META", "JPM", "JNJ", "V",
+            "AAPL", "GOOGL", "TSLA", "MSFT", "AMZN", "NVDA", "META", "JPM",
+            "JNJ", "V",
         ];
 
         loop {
@@ -108,7 +109,10 @@ impl Server {
         });
     }
 
-    fn ping_listener_loop(client_manager: Arc<ClientManager>, port: u16) -> Result<()> {
+    fn ping_listener_loop(
+        client_manager: Arc<ClientManager>,
+        port: u16,
+    ) -> Result<()> {
         let socket = UdpSocket::bind(format!("0.0.0.0:{}", port))?;
         socket.set_read_timeout(Some(Duration::from_secs(1)))?;
         info!("UDP ping listener on port {}", port);
@@ -123,7 +127,9 @@ impl Server {
                         let _ = socket.send_to(b"PONG", addr);
                     }
                 }
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => continue,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    continue
+                }
                 Err(e) => warn!("Ping listener error: {}", e),
             }
         }
@@ -159,7 +165,8 @@ impl Server {
     }
 
     fn run_tcp_server(&self) -> Result<()> {
-        let listener = TcpListener::bind(format!("0.0.0.0:{}", self.config.tcp_port))?;
+        let listener =
+            TcpListener::bind(format!("0.0.0.0:{}", self.config.tcp_port))?;
         info!("TCP server listening on port {}", self.config.tcp_port);
 
         for stream in listener.incoming() {
@@ -168,7 +175,9 @@ impl Server {
                     let manager = self.client_manager.clone();
                     let channels = self.client_channels.clone();
                     thread::spawn(move || {
-                        if let Err(e) = Self::handle_tcp_client(stream, manager, channels) {
+                        if let Err(e) =
+                            Self::handle_tcp_client(stream, manager, channels)
+                        {
                             error!("Client handler error: {}", e);
                         }
                     });
@@ -193,7 +202,10 @@ impl Server {
             let line = line?;
             let response = match line.parse::<Command>() {
                 Ok(Command::Stream { udp_addr, tickers }) => {
-                    info!("Starting stream to {} for tickers: {}", udp_addr, tickers);
+                    info!(
+                        "Starting stream to {} for tickers: {}",
+                        udp_addr, tickers
+                    );
 
                     client_manager.register(udp_addr, tickers.clone());
 
@@ -202,7 +214,9 @@ impl Server {
 
                     let (stop_tx, _stop_rx) = unbounded();
                     thread::spawn(move || {
-                        match ClientStreamer::new(udp_addr, tickers, rx, stop_tx) {
+                        match ClientStreamer::new(
+                            udp_addr, tickers, rx, stop_tx,
+                        ) {
                             Ok(streamer) => streamer.run(),
                             Err(e) => error!("Stream handler error: {}", e),
                         }
