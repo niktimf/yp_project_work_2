@@ -19,7 +19,9 @@ impl QuoteGenerator {
 
     const UNKNOWN_TICKER_DEFAULT_PRICE: Decimal = dec!(100.00);
 
+    #[allow(dead_code)]
     const RANDOM_PRICE_MIN: Decimal = dec!(50.00);
+    #[allow(dead_code)]
     const RANDOM_PRICE_MAX: Decimal = dec!(500.00);
 
     const HIGH_VOLUME_TICKERS: &[&str] =
@@ -41,6 +43,7 @@ impl QuoteGenerator {
         }
     }
 
+    #[allow(dead_code)]
     pub fn with_tickers(tickers: &Tickers) -> Self {
         let mut rng = rand::thread_rng();
         let prices = tickers
@@ -61,6 +64,7 @@ impl QuoteGenerator {
         StockQuote::new(ticker, price, volume)
     }
 
+    #[allow(dead_code)]
     pub fn generate_batch(
         &mut self,
         tickers: &Tickers,
@@ -69,11 +73,13 @@ impl QuoteGenerator {
     }
 
     #[must_use]
+    #[allow(dead_code)]
     pub fn current_price(&self, ticker: &str) -> Option<Decimal> {
         self.prices.get(ticker).copied()
     }
 
     #[must_use]
+    #[allow(dead_code)]
     pub fn known_tickers(&self) -> Vec<&str> {
         self.prices.keys().map(String::as_str).collect()
     }
@@ -137,6 +143,7 @@ fn random_decimal(rng: &mut ThreadRng, min: Decimal, max: Decimal) -> Decimal {
     min + range * random_factor
 }
 
+#[allow(dead_code)]
 fn random_price(rng: &mut ThreadRng) -> Decimal {
     random_decimal(
         rng,

@@ -1,27 +1,30 @@
 use anyhow::Result;
-use crossbeam::channel::{Receiver, RecvTimeoutError, Sender};
+use crossbeam::channel::{Receiver, RecvTimeoutError, TryRecvError};
 use log::{debug, info, warn};
 use parking_lot::Mutex;
 use std::collections::HashMap;
-use std::net::UdpSocket;
+use std::net::{IpAddr, SocketAddr, UdpSocket};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use common::{StockQuote, Tickers, UdpAddr};
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ClientInfo {
     pub target: UdpAddr,
     pub tickers: Tickers,
     pub last_ping: Instant,
+    pub source_ip: IpAddr,
 }
 
 impl ClientInfo {
-    pub fn new(target: UdpAddr, tickers: Tickers) -> Self {
+    pub fn new(target: UdpAddr, tickers: Tickers, source_ip: IpAddr) -> Self {
         Self {
             target,
             tickers,
             last_ping: Instant::now(),
+            source_ip,
         }
     }
 
@@ -35,6 +38,7 @@ impl ClientInfo {
     }
 
     #[must_use]
+    #[allow(dead_code)]
     pub fn is_subscribed(&self, ticker: &str) -> bool {
         self.tickers.contains(ticker)
     }
@@ -55,14 +59,20 @@ impl ClientManager {
         }
     }
 
-    pub fn register(&self, target: UdpAddr, tickers: &Tickers) {
-        let client = ClientInfo::new(target, tickers.clone());
+    pub fn register(
+        &self,
+        target: UdpAddr,
+        tickers: &Tickers,
+        source_ip: IpAddr,
+    ) {
+        let client = ClientInfo::new(target, tickers.clone(), source_ip);
 
-        info!("Registering client {target} for tickers: {tickers}");
+        info!("Registering client {target} for tickers: {tickers} (source IP: {source_ip})");
 
         self.clients.lock().insert(target, client);
     }
 
+    #[allow(dead_code)]
     pub fn update_ping(&self, target: &UdpAddr) -> bool {
         let mut clients = self.clients.lock();
 
@@ -79,6 +89,20 @@ impl ClientManager {
         )
     }
 
+    pub fn update_ping_by_source(&self, source_addr: &SocketAddr) -> bool {
+        let mut clients = self.clients.lock();
+
+        for client in clients.values_mut() {
+            if client.source_ip == source_addr.ip() {
+                client.touch();
+                return true;
+            }
+        }
+        debug!("Ping from unknown source {source_addr}");
+        false
+    }
+
+    #[allow(dead_code)]
     pub fn remove(&self, target: &UdpAddr) {
         if self.clients.lock().remove(target).is_some() {
             info!("Removed client {target}");
@@ -103,14 +127,17 @@ impl ClientManager {
         removed
     }
 
+    #[allow(dead_code)]
     pub fn snapshot(&self) -> Vec<ClientInfo> {
         self.clients.lock().values().cloned().collect()
     }
 
+    #[allow(dead_code)]
     pub fn count(&self) -> usize {
         self.clients.lock().len()
     }
 
+    #[allow(dead_code)]
     pub fn contains(&self, target: &UdpAddr) -> bool {
         self.clients.lock().contains_key(target)
     }
@@ -127,16 +154,17 @@ pub struct ClientStreamer {
     tickers: Tickers,
     socket: UdpSocket,
     quote_rx: Receiver<StockQuote>,
-    stop_tx: Sender<UdpAddr>,
+    stop_rx: Receiver<()>,
 }
 
 impl ClientStreamer {
     const QUOTE_POLL_INTERVAL: Duration = Duration::from_millis(10);
+
     pub fn new(
         addr: UdpAddr,
         tickers: Tickers,
         quote_rx: Receiver<StockQuote>,
-        stop_tx: Sender<UdpAddr>,
+        stop_rx: Receiver<()>,
     ) -> Result<Self> {
         let socket = UdpSocket::bind("0.0.0.0:0")?;
 
@@ -145,7 +173,7 @@ impl ClientStreamer {
             tickers,
             socket,
             quote_rx,
-            stop_tx,
+            stop_rx,
         })
     }
 
@@ -156,12 +184,19 @@ impl ClientStreamer {
             warn!("Streamer for {} stopped: {}", self.addr, e);
         }
 
-        let _ = self.stop_tx.send(self.addr);
         info!("Stream to {} ended", self.addr);
     }
 
     fn stream_loop(&self) -> Result<()> {
         loop {
+            match self.stop_rx.try_recv() {
+                Ok(()) | Err(TryRecvError::Disconnected) => {
+                    debug!("Stop signal received for {}", self.addr);
+                    break;
+                }
+                Err(TryRecvError::Empty) => {}
+            }
+
             match self.quote_rx.recv_timeout(Self::QUOTE_POLL_INTERVAL) {
                 Ok(quote) => {
                     self.maybe_send_quote(&quote)?;
@@ -214,8 +249,17 @@ mod tests {
     }
 
     #[fixture]
-    fn client_info(target: UdpAddr, tickers: Tickers) -> ClientInfo {
-        ClientInfo::new(target, tickers)
+    fn source_ip() -> IpAddr {
+        "127.0.0.1".parse().unwrap()
+    }
+
+    #[fixture]
+    fn client_info(
+        target: UdpAddr,
+        tickers: Tickers,
+        source_ip: IpAddr,
+    ) -> ClientInfo {
+        ClientInfo::new(target, tickers, source_ip)
     }
 
     mod client_info_tests {
@@ -254,9 +298,10 @@ mod tests {
             manager: ClientManager,
             target: UdpAddr,
             tickers: Tickers,
+            source_ip: IpAddr,
         ) {
             assert!(!manager.contains(&target));
-            manager.register(target, &tickers);
+            manager.register(target, &tickers, source_ip);
             assert!(manager.contains(&target));
             assert_eq!(manager.count(), 1);
         }
@@ -266,8 +311,9 @@ mod tests {
             manager: ClientManager,
             target: UdpAddr,
             tickers: Tickers,
+            source_ip: IpAddr,
         ) {
-            manager.register(target, &tickers);
+            manager.register(target, &tickers, source_ip);
             manager.remove(&target);
             assert!(!manager.contains(&target));
         }
@@ -283,8 +329,9 @@ mod tests {
             manager: ClientManager,
             target: UdpAddr,
             tickers: Tickers,
+            source_ip: IpAddr,
         ) {
-            manager.register(target, &tickers);
+            manager.register(target, &tickers, source_ip);
             assert!(manager.update_ping(&target));
         }
 
@@ -292,9 +339,10 @@ mod tests {
         fn remove_expired_cleans_old_clients(
             target: UdpAddr,
             tickers: Tickers,
+            source_ip: IpAddr,
         ) {
             let manager = ClientManager::new(Duration::from_millis(10));
-            manager.register(target, &tickers);
+            manager.register(target, &tickers, source_ip);
             thread::sleep(Duration::from_millis(50));
 
             let removed = manager.remove_expired();
@@ -308,9 +356,10 @@ mod tests {
         fn remove_expired_keeps_active_clients(
             target: UdpAddr,
             tickers: Tickers,
+            source_ip: IpAddr,
         ) {
             let manager = ClientManager::new(Duration::from_secs(10));
-            manager.register(target, &tickers);
+            manager.register(target, &tickers, source_ip);
 
             let removed = manager.remove_expired();
 
@@ -324,6 +373,7 @@ mod tests {
         fn snapshot_returns_copy(
             manager: ClientManager,
             tickers: Tickers,
+            source_ip: IpAddr,
             #[case] port1: u16,
             #[case] port2: u16,
         ) {
@@ -331,28 +381,44 @@ mod tests {
                 format!("127.0.0.1:{port1}").parse().unwrap();
             let target2: UdpAddr =
                 format!("127.0.0.1:{port2}").parse().unwrap();
-            manager.register(target1, &tickers);
-            manager.register(target2, &tickers);
+            manager.register(target1, &tickers, source_ip);
+            manager.register(target2, &tickers, source_ip);
 
             let snapshot = manager.snapshot();
             assert_eq!(snapshot.len(), 2);
         }
 
         #[rstest]
-        fn is_thread_safe(manager: ClientManager, tickers: Tickers) {
+        fn is_thread_safe(
+            manager: ClientManager,
+            tickers: Tickers,
+            source_ip: IpAddr,
+        ) {
             let manager_clone = manager.clone();
             let tickers_clone = tickers.clone();
 
             let handle = thread::spawn(move || {
                 let target: UdpAddr = "127.0.0.1:9000".parse().unwrap();
-                manager_clone.register(target, &tickers_clone);
+                manager_clone.register(target, &tickers_clone, source_ip);
             });
 
             let target: UdpAddr = "127.0.0.1:9001".parse().unwrap();
-            manager.register(target, &tickers);
+            manager.register(target, &tickers, source_ip);
             handle.join().unwrap();
 
             assert_eq!(manager.count(), 2);
+        }
+
+        #[rstest]
+        fn update_ping_by_source_works(
+            manager: ClientManager,
+            target: UdpAddr,
+            tickers: Tickers,
+            source_ip: IpAddr,
+        ) {
+            manager.register(target, &tickers, source_ip);
+            let source_addr: SocketAddr = "127.0.0.1:12345".parse().unwrap();
+            assert!(manager.update_ping_by_source(&source_addr));
         }
     }
 }

@@ -16,6 +16,10 @@ pub struct Client {
 }
 
 impl Client {
+    const UDP_RECEIVE_BUFFER_SIZE: usize = 4096;
+    const TCP_READ_TIMEOUT_SECS: u64 = 5;
+    const UDP_READ_TIMEOUT_MS: u64 = 500;
+
     pub fn new(config: ClientConfig) -> Self {
         Self {
             config,
@@ -26,12 +30,16 @@ impl Client {
     pub fn run(&self) -> Result<()> {
         info!("Connecting to TCP server at {}", self.config.server_addr);
         let mut tcp_stream = TcpStream::connect(self.config.server_addr)?;
-        tcp_stream.set_read_timeout(Some(Duration::from_secs(5)))?;
+        tcp_stream.set_read_timeout(Some(Duration::from_secs(
+            Self::TCP_READ_TIMEOUT_SECS,
+        )))?;
 
         info!("Setting up UDP socket on port {}", self.config.udp_port);
         let udp_socket =
             Arc::new(UdpSocket::bind(self.config.udp_bind_addr())?);
-        udp_socket.set_read_timeout(Some(Duration::from_millis(500)))?;
+        udp_socket.set_read_timeout(Some(Duration::from_millis(
+            Self::UDP_READ_TIMEOUT_MS,
+        )))?;
 
         self.send_stream_command(&mut tcp_stream)?;
 
@@ -49,6 +57,7 @@ impl Client {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn shutdown(&self) {
         info!("Initiating shutdown...");
         self.running.store(false, Ordering::SeqCst);
@@ -60,7 +69,7 @@ impl Client {
 
     fn send_stream_command(&self, tcp_stream: &mut TcpStream) -> Result<()> {
         let tickers_str = self.config.tickers.to_string();
-        let udp_addr = self.config.udp_bind_addr();
+        let udp_addr = self.config.udp_stream_addr();
         let command = format!(
             "STREAM udp://{}:{} {}\n",
             udp_addr.ip(),
@@ -124,7 +133,7 @@ impl Client {
     }
 
     fn receive_loop(socket: &Arc<UdpSocket>, running: &Arc<AtomicBool>) {
-        let mut buf = [0_u8; 4096];
+        let mut buf = [0_u8; Self::UDP_RECEIVE_BUFFER_SIZE];
 
         while running.load(Ordering::SeqCst) {
             match socket.recv_from(&mut buf) {

@@ -3,9 +3,11 @@ use clap::Parser;
 use common::Tickers;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 use std::time::Duration;
+
+const DEFAULT_PING_INTERVAL_SECS: u64 = 2;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about = "Quote streaming client")]
@@ -19,6 +21,14 @@ pub struct Args {
     #[arg(short = 'u', long, default_value = "34254")]
     pub udp_port: u16,
 
+    #[arg(
+        short = 'c',
+        long,
+        default_value = "127.0.0.1",
+        help = "Client IP address for receiving data"
+    )]
+    pub client_ip: String,
+
     #[arg(short = 't', long, default_value = "tickers.txt")]
     pub tickers_file: PathBuf,
 }
@@ -28,6 +38,7 @@ pub struct ClientConfig {
     pub server_addr: SocketAddr,
     pub ping_addr: SocketAddr,
     pub udp_port: u16,
+    pub client_ip: IpAddr,
     pub tickers: Tickers,
     pub ping_interval: Duration,
 }
@@ -36,19 +47,25 @@ impl ClientConfig {
     pub fn from_args(args: &Args) -> Result<Self> {
         let server_addr: SocketAddr = args.server_addr.parse()?;
         let ping_addr = SocketAddr::new(server_addr.ip(), args.ping_port);
+        let client_ip: IpAddr = args.client_ip.parse()?;
         let tickers = read_tickers(&args.tickers_file)?;
 
         Ok(Self {
             server_addr,
             ping_addr,
             udp_port: args.udp_port,
+            client_ip,
             tickers,
-            ping_interval: Duration::from_secs(2),
+            ping_interval: Duration::from_secs(DEFAULT_PING_INTERVAL_SECS),
         })
     }
 
     pub fn udp_bind_addr(&self) -> SocketAddr {
         SocketAddr::new("0.0.0.0".parse().unwrap(), self.udp_port)
+    }
+
+    pub fn udp_stream_addr(&self) -> SocketAddr {
+        SocketAddr::new(self.client_ip, self.udp_port)
     }
 }
 

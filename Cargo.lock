@@ -487,6 +487,7 @@ dependencies = [
  "rstest",
  "rust_decimal",
  "serde",
+ "serde_json",
  "url",
 ]
 
@@ -2275,6 +2276,8 @@ dependencies = [
  "anyhow",
  "common",
  "crossbeam",
+ "ctrlc",
+ "env_logger",
  "log",
  "parking_lot",
  "proptest",

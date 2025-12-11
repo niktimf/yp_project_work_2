@@ -17,4 +17,4 @@ must_use_candidate = "allow"
 module_inception = "allow"
 
 [workspace.lints.rust]
-dead_code = "allow"
+dead_code = "warn"

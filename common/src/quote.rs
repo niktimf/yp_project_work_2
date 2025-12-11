@@ -51,7 +51,15 @@ impl StockQuote {
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
-        self.to_string().into_bytes()
+        self.to_json().into_bytes()
+    }
+
+    pub fn to_json(&self) -> String {
+        serde_json::to_string(self).unwrap_or_else(|_| self.to_string())
+    }
+
+    pub fn from_json(s: &str) -> Result<Self> {
+        serde_json::from_str(s).context("Invalid JSON quote")
     }
 }
 
@@ -73,6 +81,10 @@ impl FromStr for StockQuote {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self> {
+        if s.trim_start().starts_with('{') {
+            return Self::from_json(s);
+        }
+
         let mut parts = s.split(Self::FIELD_SEPARATOR);
 
         let ticker = parts
@@ -178,7 +190,7 @@ mod tests {
 
         #[test]
         fn to_bytes_matches_display(quote in valid_quote()) {
-            prop_assert_eq!(quote.to_bytes(), quote.to_string().into_bytes());
+            prop_assert_eq!(quote.to_bytes(), quote.to_json().into_bytes());
         }
 
         #[test]
@@ -236,5 +248,34 @@ mod tests {
 
         let parsed: StockQuote = quote.to_string().parse().unwrap();
         assert_eq!(quote, parsed);
+    }
+
+    #[test]
+    fn json_roundtrip() {
+        let quote = StockQuote {
+            ticker: "AAPL".to_string(),
+            price: Decimal::ONE_HUNDRED,
+            volume: 1000,
+            timestamp: 1_234_567_890,
+        };
+
+        let json = quote.to_json();
+        assert!(json.starts_with('{'));
+        let parsed: StockQuote = json.parse().unwrap();
+        assert_eq!(quote, parsed);
+    }
+
+    #[test]
+    fn to_bytes_uses_json() {
+        let quote = StockQuote {
+            ticker: "TSLA".to_string(),
+            price: Decimal::new(42050, 2),
+            volume: 500,
+            timestamp: 1_700_000_000,
+        };
+
+        let bytes = quote.to_bytes();
+        let json_str = String::from_utf8(bytes).unwrap();
+        assert!(json_str.contains("\"ticker\":\"TSLA\""));
     }
 }
