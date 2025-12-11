@@ -33,7 +33,7 @@ pub struct ClientConfig {
 }
 
 impl ClientConfig {
-    pub fn from_args(args: Args) -> Result<Self> {
+    pub fn from_args(args: &Args) -> Result<Self> {
         let server_addr: SocketAddr = args.server_addr.parse()?;
         let ping_addr = SocketAddr::new(server_addr.ip(), args.ping_port);
         let tickers = read_tickers(&args.tickers_file)?;

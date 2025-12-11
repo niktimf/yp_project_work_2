@@ -43,6 +43,10 @@ pub struct Server {
 }
 
 impl Server {
+    const ALL_TICKERS: [&str; 10] = [
+        "AAPL", "GOOGL", "TSLA", "MSFT", "AMZN", "NVDA", "META", "JPM", "JNJ",
+        "V",
+    ];
     pub fn new(config: ServerConfig) -> Self {
         let client_manager = Arc::new(ClientManager::new(config.ping_timeout));
         let client_channels = Arc::new(Mutex::new(HashMap::new()));
@@ -68,26 +72,22 @@ impl Server {
         let interval = self.config.quote_interval;
 
         thread::spawn(move || {
-            if let Err(e) = Self::quote_generator_loop(channels, interval) {
-                error!("Quote generator error: {}", e);
+            if let Err(e) = Self::quote_generator_loop(&channels, interval) {
+                error!("Quote generator error: {e}");
             }
         });
     }
 
     fn quote_generator_loop(
-        client_channels: ClientChannels,
+        client_channels: &ClientChannels,
         interval: Duration,
     ) -> Result<()> {
         let mut generator = QuoteGenerator::new();
-        const ALL_TICKERS: [&str; 10] = [
-            "AAPL", "GOOGL", "TSLA", "MSFT", "AMZN", "NVDA", "META", "JPM",
-            "JNJ", "V",
-        ];
 
         loop {
             thread::sleep(interval);
 
-            for ticker in &ALL_TICKERS {
+            for ticker in &Self::ALL_TICKERS {
                 if let Ok(quote) = generator.generate(ticker) {
                     let channels = client_channels.lock();
                     for sender in channels.values() {
@@ -103,19 +103,19 @@ impl Server {
         let port = self.config.udp_ping_port;
 
         thread::spawn(move || {
-            if let Err(e) = Self::ping_listener_loop(manager, port) {
-                error!("Ping listener error: {}", e);
+            if let Err(e) = Self::ping_listener_loop(&manager, port) {
+                error!("Ping listener error: {e}");
             }
         });
     }
 
     fn ping_listener_loop(
-        client_manager: Arc<ClientManager>,
+        client_manager: &Arc<ClientManager>,
         port: u16,
     ) -> Result<()> {
-        let socket = UdpSocket::bind(format!("0.0.0.0:{}", port))?;
+        let socket = UdpSocket::bind(format!("0.0.0.0:{port}"))?;
         socket.set_read_timeout(Some(Duration::from_secs(1)))?;
-        info!("UDP ping listener on port {}", port);
+        info!("UDP ping listener on port {port}");
 
         let mut buf = [0_u8; 1024];
         loop {
@@ -127,10 +127,8 @@ impl Server {
                         let _ = socket.send_to(b"PONG", addr);
                     }
                 }
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    continue
-                }
-                Err(e) => warn!("Ping listener error: {}", e),
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+                Err(e) => warn!("Ping listener error: {e}"),
             }
         }
     }
@@ -141,13 +139,13 @@ impl Server {
         let interval = self.config.cleanup_interval;
 
         thread::spawn(move || {
-            Self::cleanup_loop(manager, channels, interval);
+            Self::cleanup_loop(&manager, &channels, interval);
         });
     }
 
     fn cleanup_loop(
-        client_manager: Arc<ClientManager>,
-        client_channels: ClientChannels,
+        client_manager: &Arc<ClientManager>,
+        client_channels: &ClientChannels,
         interval: Duration,
     ) {
         loop {
@@ -155,10 +153,14 @@ impl Server {
 
             let removed = client_manager.remove_expired();
             if !removed.is_empty() {
-                let mut channels = client_channels.lock();
+                {
+                    let mut channels = client_channels.lock();
+                    for addr in &removed {
+                        channels.remove(&addr.socket_addr());
+                    }
+                }
                 for addr in &removed {
-                    channels.remove(&addr.socket_addr());
-                    info!("Removed inactive client: {}", addr);
+                    info!("Removed inactive client: {addr}");
                 }
             }
         }
@@ -176,13 +178,13 @@ impl Server {
                     let channels = self.client_channels.clone();
                     thread::spawn(move || {
                         if let Err(e) =
-                            Self::handle_tcp_client(stream, manager, channels)
+                            Self::handle_tcp_client(stream, &manager, &channels)
                         {
-                            error!("Client handler error: {}", e);
+                            error!("Client handler error: {e}");
                         }
                     });
                 }
-                Err(e) => error!("Failed to accept connection: {}", e),
+                Err(e) => error!("Failed to accept connection: {e}"),
             }
         }
 
@@ -191,11 +193,11 @@ impl Server {
 
     fn handle_tcp_client(
         mut stream: TcpStream,
-        client_manager: Arc<ClientManager>,
-        client_channels: ClientChannels,
+        client_manager: &Arc<ClientManager>,
+        client_channels: &ClientChannels,
     ) -> Result<()> {
         let peer_addr = stream.peer_addr()?;
-        info!("New TCP connection from: {}", peer_addr);
+        info!("New TCP connection from: {peer_addr}");
 
         let reader = BufReader::new(stream.try_clone()?);
         for line in reader.lines() {
@@ -203,11 +205,10 @@ impl Server {
             let response = match line.parse::<Command>() {
                 Ok(Command::Stream { udp_addr, tickers }) => {
                     info!(
-                        "Starting stream to {} for tickers: {}",
-                        udp_addr, tickers
+                        "Starting stream to {udp_addr} for tickers: {tickers}"
                     );
 
-                    client_manager.register(udp_addr, tickers.clone());
+                    client_manager.register(udp_addr, &tickers.clone());
 
                     let (tx, rx) = unbounded();
                     client_channels.lock().insert(udp_addr.socket_addr(), tx);
@@ -218,7 +219,7 @@ impl Server {
                             udp_addr, tickers, rx, stop_tx,
                         ) {
                             Ok(streamer) => streamer.run(),
-                            Err(e) => error!("Stream handler error: {}", e),
+                            Err(e) => error!("Stream handler error: {e}"),
                         }
                     });
 
@@ -226,15 +227,15 @@ impl Server {
                 }
                 Ok(Command::Ping) => Response::Ok,
                 Err(e) => {
-                    warn!("Command parse error: {}", e);
+                    warn!("Command parse error: {e}");
                     Response::Error(e.to_string())
                 }
             };
 
-            writeln!(stream, "{}", response)?;
+            writeln!(stream, "{response}")?;
         }
 
-        info!("TCP connection closed: {}", peer_addr);
+        info!("TCP connection closed: {peer_addr}");
         Ok(())
     }
 }

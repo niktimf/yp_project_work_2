@@ -55,10 +55,10 @@ impl ClientManager {
         }
     }
 
-    pub fn register(&self, target: UdpAddr, tickers: Tickers) {
+    pub fn register(&self, target: UdpAddr, tickers: &Tickers) {
         let client = ClientInfo::new(target, tickers.clone());
 
-        info!("Registering client {} for tickers: {}", target, tickers);
+        info!("Registering client {target} for tickers: {tickers}");
 
         self.clients.lock().insert(target, client);
     }
@@ -66,19 +66,22 @@ impl ClientManager {
     pub fn update_ping(&self, target: &UdpAddr) -> bool {
         let mut clients = self.clients.lock();
 
-        if let Some(client) = clients.get_mut(target) {
-            client.touch();
-            debug!("Ping from {}", target);
-            true
-        } else {
-            debug!("Ping from unknown client {}", target);
-            false
-        }
+        clients.get_mut(target).map_or_else(
+            || {
+                debug!("Ping from unknown client {target}");
+                false
+            },
+            |client| {
+                client.touch();
+                debug!("Ping from {target}");
+                true
+            },
+        )
     }
 
     pub fn remove(&self, target: &UdpAddr) {
         if self.clients.lock().remove(target).is_some() {
-            info!("Removed client {}", target);
+            info!("Removed client {target}");
         }
     }
 
@@ -89,7 +92,7 @@ impl ClientManager {
 
         clients.retain(|target, info| {
             if info.is_expired(timeout) {
-                warn!("Client {} timed out", target);
+                warn!("Client {target} timed out");
                 removed.push(*target);
                 false
             } else {
@@ -163,7 +166,7 @@ impl ClientStreamer {
                 Ok(quote) => {
                     self.maybe_send_quote(&quote)?;
                 }
-                Err(RecvTimeoutError::Timeout) => continue,
+                Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => {
                     debug!("Quote channel disconnected for {}", self.addr);
                     break;
@@ -253,7 +256,7 @@ mod tests {
             tickers: Tickers,
         ) {
             assert!(!manager.contains(&target));
-            manager.register(target, tickers);
+            manager.register(target, &tickers);
             assert!(manager.contains(&target));
             assert_eq!(manager.count(), 1);
         }
@@ -264,7 +267,7 @@ mod tests {
             target: UdpAddr,
             tickers: Tickers,
         ) {
-            manager.register(target, tickers);
+            manager.register(target, &tickers);
             manager.remove(&target);
             assert!(!manager.contains(&target));
         }
@@ -281,7 +284,7 @@ mod tests {
             target: UdpAddr,
             tickers: Tickers,
         ) {
-            manager.register(target, tickers);
+            manager.register(target, &tickers);
             assert!(manager.update_ping(&target));
         }
 
@@ -291,7 +294,7 @@ mod tests {
             tickers: Tickers,
         ) {
             let manager = ClientManager::new(Duration::from_millis(10));
-            manager.register(target, tickers);
+            manager.register(target, &tickers);
             thread::sleep(Duration::from_millis(50));
 
             let removed = manager.remove_expired();
@@ -307,7 +310,7 @@ mod tests {
             tickers: Tickers,
         ) {
             let manager = ClientManager::new(Duration::from_secs(10));
-            manager.register(target, tickers);
+            manager.register(target, &tickers);
 
             let removed = manager.remove_expired();
 
@@ -328,8 +331,8 @@ mod tests {
                 format!("127.0.0.1:{port1}").parse().unwrap();
             let target2: UdpAddr =
                 format!("127.0.0.1:{port2}").parse().unwrap();
-            manager.register(target1, tickers.clone());
-            manager.register(target2, tickers);
+            manager.register(target1, &tickers);
+            manager.register(target2, &tickers);
 
             let snapshot = manager.snapshot();
             assert_eq!(snapshot.len(), 2);
@@ -342,11 +345,11 @@ mod tests {
 
             let handle = thread::spawn(move || {
                 let target: UdpAddr = "127.0.0.1:9000".parse().unwrap();
-                manager_clone.register(target, tickers_clone);
+                manager_clone.register(target, &tickers_clone);
             });
 
             let target: UdpAddr = "127.0.0.1:9001".parse().unwrap();
-            manager.register(target, tickers);
+            manager.register(target, &tickers);
             handle.join().unwrap();
 
             assert_eq!(manager.count(), 2);

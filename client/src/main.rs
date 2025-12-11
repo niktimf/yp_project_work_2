@@ -15,7 +15,7 @@ fn main() -> Result<()> {
     .init();
 
     let args = Args::parse();
-    let config = ClientConfig::from_args(args)?;
+    let config = ClientConfig::from_args(&args)?;
     let client = Client::new(config);
 
     let running = client.running();
@@ -24,7 +24,7 @@ fn main() -> Result<()> {
     })?;
 
     if let Err(e) = client.run() {
-        error!("Client error: {}", e);
+        error!("Client error: {e}");
         return Err(e);
     }
 

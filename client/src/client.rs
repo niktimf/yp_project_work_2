@@ -82,7 +82,7 @@ impl Client {
                 info!("Server accepted STREAM command");
                 Ok(())
             }
-            Response::Error(msg) => Err(anyhow!("Server error: {}", msg)),
+            Response::Error(msg) => Err(anyhow!("Server error: {msg}")),
         }
     }
 
@@ -92,20 +92,20 @@ impl Client {
         let running = self.running.clone();
 
         thread::spawn(move || {
-            Self::ping_loop(udp_socket, ping_addr, interval, running);
+            Self::ping_loop(&udp_socket, ping_addr, interval, &running);
         })
     }
 
     fn ping_loop(
-        socket: Arc<UdpSocket>,
+        socket: &Arc<UdpSocket>,
         ping_addr: std::net::SocketAddr,
         interval: Duration,
-        running: Arc<AtomicBool>,
+        running: &Arc<AtomicBool>,
     ) {
         while running.load(Ordering::SeqCst) {
             match socket.send_to(b"PING", ping_addr) {
-                Ok(_) => debug!("Sent PING to {}", ping_addr),
-                Err(e) => warn!("Failed to send PING: {}", e),
+                Ok(_) => debug!("Sent PING to {ping_addr}"),
+                Err(e) => warn!("Failed to send PING: {e}"),
             }
             thread::sleep(interval);
         }
@@ -119,11 +119,11 @@ impl Client {
         let running = self.running.clone();
 
         thread::spawn(move || {
-            Self::receive_loop(udp_socket, running);
+            Self::receive_loop(&udp_socket, &running);
         })
     }
 
-    fn receive_loop(socket: Arc<UdpSocket>, running: Arc<AtomicBool>) {
+    fn receive_loop(socket: &Arc<UdpSocket>, running: &Arc<AtomicBool>) {
         let mut buf = [0_u8; 4096];
 
         while running.load(Ordering::SeqCst) {
@@ -132,13 +132,11 @@ impl Client {
                     let data = String::from_utf8_lossy(&buf[..len]);
                     Self::handle_received_data(&data);
                 }
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    continue
-                }
-                Err(e) if e.kind() == std::io::ErrorKind::TimedOut => continue,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+                Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {}
                 Err(e) => {
                     if running.load(Ordering::SeqCst) {
-                        error!("Failed to receive UDP data: {}", e);
+                        error!("Failed to receive UDP data: {e}");
                     }
                 }
             }
@@ -160,7 +158,7 @@ impl Client {
                     quote.timestamp, quote.ticker, quote.price, quote.volume
                 );
             }
-            Err(e) => warn!("Failed to parse quote '{}': {}", data, e),
+            Err(e) => warn!("Failed to parse quote '{data}': {e}"),
         }
     }
 }

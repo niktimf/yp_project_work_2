@@ -13,3 +13,6 @@ url = "2.5"
 [dev-dependencies]
 rstest = "0.26"
 proptest = "1.9"
+
+[lints]
+workspace = true

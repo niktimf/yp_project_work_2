@@ -16,6 +16,8 @@ pub struct StockQuote {
 impl StockQuote {
     const FIELD_SEPARATOR: char = '|';
 
+    /// # Errors
+    /// Returns an error if ticker is empty or contains the field separator.
     pub fn new(
         ticker: impl Into<String>,
         price: Decimal,
@@ -33,10 +35,12 @@ impl StockQuote {
             ));
         }
 
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .context("System time before UNIX epoch")?
-            .as_millis() as u64;
+        let timestamp = u64::try_from(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .context("System time before UNIX epoch")?
+                .as_millis(),
+        )?;
 
         Ok(Self {
             ticker,
@@ -71,23 +75,26 @@ impl FromStr for StockQuote {
     fn from_str(s: &str) -> Result<Self> {
         let mut parts = s.split(Self::FIELD_SEPARATOR);
 
-        let ticker = parts.next().ok_or(anyhow!("Missing ticker"))?.to_string();
+        let ticker = parts
+            .next()
+            .ok_or_else(|| anyhow!("Missing ticker"))?
+            .to_string();
 
         let price = parts
             .next()
-            .ok_or(anyhow!("Missing price"))?
+            .ok_or_else(|| anyhow!("Missing price"))?
             .parse()
             .context("Invalid price")?;
 
         let volume = parts
             .next()
-            .ok_or(anyhow!("Missing volume"))?
+            .ok_or_else(|| anyhow!("Missing volume"))?
             .parse()
             .context("Invalid volume")?;
 
         let timestamp = parts
             .next()
-            .ok_or(anyhow!("Missing timestamp"))?
+            .ok_or_else(|| anyhow!("Missing timestamp"))?
             .parse()
             .context("Invalid timestamp")?;
 
@@ -118,7 +125,7 @@ mod tests {
             ticker: "AAPL".to_string(),
             price: Decimal::ONE_HUNDRED,
             volume: 1000,
-            timestamp: 1234567890,
+            timestamp: 1_234_567_890,
         };
 
         let serialized = quote.to_string();
@@ -165,8 +172,8 @@ mod tests {
         #[test]
         fn display_has_four_fields(quote in valid_quote()) {
             let serialized = quote.to_string();
-            let parts: Vec<_> = serialized.split(StockQuote::FIELD_SEPARATOR).collect();
-            prop_assert_eq!(parts.len(), 4);
+            let parts = serialized.split(StockQuote::FIELD_SEPARATOR).count();
+            prop_assert_eq!(parts, 4);
         }
 
         #[test]

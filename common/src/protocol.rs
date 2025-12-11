@@ -27,7 +27,7 @@ impl Tickers {
         self.0.len()
     }
 
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         false
     }
 }
@@ -44,7 +44,7 @@ impl FromStr for Tickers {
 
         NonEmpty::from_vec(tickers)
             .map(Tickers)
-            .ok_or(anyhow!("No valid tickers provided"))
+            .ok_or_else(|| anyhow!("No valid tickers provided"))
     }
 }
 
@@ -68,7 +68,7 @@ pub struct UdpAddr(SocketAddr);
 impl UdpAddr {
     const UDP_SCHEME: &str = "udp";
 
-    pub fn socket_addr(&self) -> SocketAddr {
+    pub const fn socket_addr(&self) -> SocketAddr {
         self.0
     }
 
@@ -81,8 +81,10 @@ impl UdpAddr {
             ));
         }
 
-        let host = url.host_str().ok_or(anyhow!("Missing host in URL"))?;
-        let port = url.port().ok_or(anyhow!("Missing port in URL"))?;
+        let host = url
+            .host_str()
+            .ok_or_else(|| anyhow!("Missing host in URL"))?;
+        let port = url.port().ok_or_else(|| anyhow!("Missing port in URL"))?;
 
         Self::from_host_port(&format!("{host}:{port}"))
     }
@@ -91,7 +93,7 @@ impl UdpAddr {
         let addr = s
             .to_socket_addrs()?
             .next()
-            .ok_or(anyhow!("Could not resolve address: {s}"))?;
+            .ok_or_else(|| anyhow!("Could not resolve address: {s}"))?;
 
         Ok(Self(addr))
     }
@@ -134,7 +136,7 @@ pub enum Command {
 }
 
 impl Command {
-    pub fn stream(udp_addr: UdpAddr, tickers: Tickers) -> Self {
+    pub const fn stream(udp_addr: UdpAddr, tickers: Tickers) -> Self {
         Self::Stream { udp_addr, tickers }
     }
 }
@@ -144,17 +146,17 @@ impl FromStr for Command {
 
     fn from_str(s: &str) -> Result<Self> {
         let mut parts = s.split_whitespace();
-        let cmd = parts.next().ok_or(anyhow!("Empty command"))?;
+        let cmd = parts.next().ok_or_else(|| anyhow!("Empty command"))?;
         match cmd.to_uppercase().as_str() {
             "STREAM" => {
                 let udp_addr: UdpAddr = parts
                     .next()
-                    .ok_or(anyhow!("STREAM: missing UDP address"))?
+                    .ok_or_else(|| anyhow!("STREAM: missing UDP address"))?
                     .parse()?;
 
                 let tickers: Tickers = parts
                     .next()
-                    .ok_or(anyhow!("STREAM: missing tickers"))?
+                    .ok_or_else(|| anyhow!("STREAM: missing tickers"))?
                     .parse()?;
 
                 if parts.next().is_some() {
@@ -504,7 +506,7 @@ mod tests {
 
                 match parsed {
                     Response::Error(parsed_msg) => prop_assert_eq!(parsed_msg, msg),
-                    _ => prop_assert!(false, "Expected Error variant"),
+                    Response::Ok => prop_assert!(false, "Expected Error variant"),
                 }
             }
         }
@@ -531,13 +533,13 @@ mod tests {
         #[test]
         fn parses_empty_error_message() {
             let resp: Response = "ERR".parse().unwrap();
-            assert_eq!(resp, Response::Error("".to_string()));
+            assert_eq!(resp, Response::Error(String::new()));
         }
 
         #[test]
         fn parses_error_with_trailing_space() {
             let resp: Response = "ERR ".parse().unwrap();
-            assert_eq!(resp, Response::Error("".to_string()));
+            assert_eq!(resp, Response::Error(String::new()));
         }
     }
 }

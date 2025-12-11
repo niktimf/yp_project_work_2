@@ -15,3 +15,6 @@ cognitive_complexity = "warn"
 module_name_repetitions = "allow"
 must_use_candidate = "allow"
 module_inception = "allow"
+
+[workspace.lints.rust]
+dead_code = "allow"
