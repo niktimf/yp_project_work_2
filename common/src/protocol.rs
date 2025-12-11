@@ -143,7 +143,7 @@ impl FromStr for Command {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self> {
-        let mut parts = s.trim().split_whitespace();
+        let mut parts = s.split_whitespace();
         let cmd = parts.next().ok_or(anyhow!("Empty command"))?;
         match cmd.to_uppercase().as_str() {
             "STREAM" => {
@@ -190,18 +190,18 @@ impl FromStr for Response {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self> {
-        let s = s.trim();
+        let s = s.trim_start();
 
-        if s == "OK" {
+        if s == "OK" || s.trim_end() == "OK" {
             return Ok(Self::Ok);
-        }
-
-        if s == "ERR" {
-            return Ok(Self::Error(String::new()));
         }
 
         if let Some(msg) = s.strip_prefix("ERR ") {
             return Ok(Self::Error(msg.to_string()));
+        }
+
+        if s == "ERR" || s.trim_end() == "ERR" {
+            return Ok(Self::Error(String::new()));
         }
 
         Err(anyhow!("Invalid response: {s}"))
@@ -359,7 +359,7 @@ mod tests {
 
             #[test]
             fn len_always_positive(tickers in valid_tickers()) {
-                prop_assert!(tickers.len() >= 1);
+                prop_assert!(!tickers.is_empty());
             }
 
             #[test]
