@@ -1,4 +1,4 @@
-FROM rust:1.90-slim as builder
+FROM rust:1.90-slim AS builder
 
 WORKDIR /app
 
@@ -12,12 +12,12 @@ RUN mkdir -p server/src client/src common/src && \
     echo "fn main() {}" > client/src/main.rs && \
     echo "" > common/src/lib.rs && \
     cargo build --release -p server && \
-    rm -rf server/src client/src common/src
+    rm -rf server/src common/src
 
 COPY server/src server/src
 COPY common/src common/src
 
-RUN touch server/src/main.rs && \
+RUN touch server/src/main.rs common/src/lib.rs && \
     cargo build --release -p server
 
 FROM debian:bookworm-slim
