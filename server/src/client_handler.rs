@@ -90,16 +90,20 @@ impl ClientManager {
     }
 
     pub fn update_ping_by_source(&self, source_addr: &SocketAddr) -> bool {
-        let mut clients = self.clients.lock();
-
-        for client in clients.values_mut() {
-            if client.source_ip == source_addr.ip() {
+        let found = self
+            .clients
+            .lock()
+            .values_mut()
+            .find(|client| client.source_ip == source_addr.ip())
+            .map(|client| {
                 client.touch();
-                return true;
-            }
+            })
+            .is_some();
+
+        if !found {
+            debug!("Ping from unknown source {source_addr}");
         }
-        debug!("Ping from unknown source {source_addr}");
-        false
+        found
     }
 
     #[allow(dead_code)]

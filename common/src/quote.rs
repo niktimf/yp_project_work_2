@@ -14,6 +14,14 @@ pub struct StockQuote {
 }
 
 impl StockQuote {
+    /// Creates a new stock quote with the current timestamp.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The ticker is empty
+    /// - System time is before UNIX epoch
+    /// - Timestamp overflows u64
     pub fn new(
         ticker: impl Into<String>,
         price: Decimal,

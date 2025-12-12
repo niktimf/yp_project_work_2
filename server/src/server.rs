@@ -92,11 +92,7 @@ impl Server {
         let running = self.running.clone();
 
         thread::spawn(move || {
-            if let Err(e) =
-                Self::quote_generator_loop(&channels, interval, &running)
-            {
-                error!("Quote generator error: {e}");
-            }
+            Self::quote_generator_loop(&channels, interval, &running);
         });
     }
 
@@ -104,7 +100,7 @@ impl Server {
         client_channels: &ClientChannels,
         interval: Duration,
         running: &Arc<AtomicBool>,
-    ) -> Result<()> {
+    ) {
         let mut generator = QuoteGenerator::new();
 
         while running.load(Ordering::SeqCst) {
@@ -120,7 +116,6 @@ impl Server {
             }
         }
         info!("Quote generator stopped");
-        Ok(())
     }
 
     fn spawn_ping_listener(&self) {
@@ -197,12 +192,11 @@ impl Server {
 
             let removed = client_manager.remove_expired();
             if !removed.is_empty() {
-                let mut channels = client_channels.lock();
-                let mut stops = stop_channels.lock();
                 for addr in &removed {
-                    channels.remove(&addr.socket_addr());
-                    if let Some(stop_tx) = stops.remove(&addr.socket_addr()) {
-                        let _ = stop_tx.send(());
+                    client_channels.lock().remove(&addr.socket_addr());
+                    let stop_tx = stop_channels.lock().remove(&addr.socket_addr());
+                    if let Some(tx) = stop_tx {
+                        let _ = tx.send(());
                     }
                     info!("Removed inactive client: {addr}");
                 }
@@ -297,12 +291,8 @@ impl Server {
         let (tx, rx) = unbounded();
         let (stop_tx, stop_rx) = unbounded();
 
-        {
-            let mut channels = client_channels.lock();
-            let mut stops = stop_channels.lock();
-            channels.insert(udp_addr.socket_addr(), tx);
-            stops.insert(udp_addr.socket_addr(), stop_tx);
-        }
+        client_channels.lock().insert(udp_addr.socket_addr(), tx);
+        stop_channels.lock().insert(udp_addr.socket_addr(), stop_tx);
 
         thread::spawn(move || {
             match ClientStreamer::new(udp_addr, tickers, rx, stop_rx) {

@@ -64,7 +64,7 @@ impl ClientConfig {
         SocketAddr::new("0.0.0.0".parse().unwrap(), self.udp_port)
     }
 
-    pub fn udp_stream_addr(&self) -> SocketAddr {
+    pub const fn udp_stream_addr(&self) -> SocketAddr {
         SocketAddr::new(self.client_ip, self.udp_port)
     }
 }
