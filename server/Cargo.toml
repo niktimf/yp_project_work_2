@@ -19,7 +19,6 @@ ctrlc = "3.4"
 
 [dev-dependencies]
 rstest = "0.26"
-testcontainers = "0.26"
 proptest = "1.9"
 
 [lints]
