@@ -194,7 +194,8 @@ impl Server {
             if !removed.is_empty() {
                 for addr in &removed {
                     client_channels.lock().remove(&addr.socket_addr());
-                    let stop_tx = stop_channels.lock().remove(&addr.socket_addr());
+                    let stop_tx =
+                        stop_channels.lock().remove(&addr.socket_addr());
                     if let Some(tx) = stop_tx {
                         let _ = tx.send(());
                     }
